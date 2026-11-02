@@ -31,16 +31,17 @@ export function createServices(db: Database, clock: Clock): Services {
   };
 }
 
-// Kept on globalThis so hot reloads in development reuse one connection.
-const globalForServices = globalThis as typeof globalThis & { clubInsightsServices?: Services };
-
+/** Services for one request. They are cheap to build; only the connection is shared. */
 export function services(): Services {
-  globalForServices.clubInsightsServices ??= createDefaultServices();
-  return globalForServices.clubInsightsServices;
-}
-
-function createDefaultServices(): Services {
   const config = loadConfig();
   const clock = config.fixedNow ? fixedClock(config.fixedNow) : systemClock;
-  return createServices(openDatabaseForReading(config.databasePath), clock);
+  return createServices(sharedDatabase(config.databasePath), clock);
+}
+
+// Kept on globalThis so hot reloads in development reuse one connection.
+const globalForDb = globalThis as typeof globalThis & { clubInsightsDb?: Database };
+
+function sharedDatabase(path: string): Database {
+  globalForDb.clubInsightsDb ??= openDatabaseForReading(path);
+  return globalForDb.clubInsightsDb;
 }

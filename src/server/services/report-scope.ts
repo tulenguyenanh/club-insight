@@ -1,9 +1,9 @@
-import type { ClubDto, RangeSelection } from "@/contracts/api";
-import { addDays, isLocalDate, type LocalDate } from "@/domain/calendar";
+import type { ClubDto, ComparisonDto, RangeSelection } from "@/contracts/api";
+import { isLocalDate, type LocalDate } from "@/domain/calendar";
 import type { Club, Session } from "@/domain/model";
 import { periodForPreset, periodLength, previousPeriod, type Period } from "@/domain/period";
 import { sessionsIn } from "@/domain/sessions";
-import { startOfLocalDay } from "@/domain/time-zone";
+import { localDaysWindow } from "@/domain/time-zone";
 import type { Clock } from "../clock";
 import { InvalidRequestError } from "../errors";
 import type { SessionRepository } from "../repositories/types";
@@ -19,6 +19,7 @@ export interface ReportScope {
   asOf: Date;
   period: Period;
   previousPeriod: Period;
+  comparison: ComparisonDto;
   /** All of the club's sessions up to the end of `period`. */
   history: Session[];
   current: Session[];
@@ -39,10 +40,9 @@ export class ReportScopeLoader {
     const period = resolvePeriod(selection, clubDto.today);
     const previous = previousPeriod(period);
 
-    const history = await this.sessions.findStartingIn(club.id, {
-      start: new Date(0),
-      end: startOfLocalDay(addDays(period.to, 1), club.timeZone),
-    });
+    // From the very first session: "new player" needs to know who played before.
+    const { end } = localDaysWindow(period.from, period.to, club.timeZone);
+    const history = await this.sessions.findStartingIn(club.id, { start: new Date(0), end });
 
     return {
       club,
@@ -50,11 +50,19 @@ export class ReportScopeLoader {
       asOf,
       period,
       previousPeriod: previous,
+      comparison: assessComparison(previous, clubDto.firstSessionOn),
       history,
       current: sessionsIn(history, period, club.timeZone),
       previous: sessionsIn(history, previous, club.timeZone),
     };
   }
+}
+
+/** A comparison is only fair if the earlier period lies wholly inside the club's history. */
+export function assessComparison(previous: Period, firstSessionOn: LocalDate | null): ComparisonDto {
+  if (firstSessionOn === null) return { available: false, reason: "no_sessions_yet" };
+  if (previous.from < firstSessionOn) return { available: false, reason: "starts_before_first_session" };
+  return { available: true };
 }
 
 export function resolvePeriod(selection: RangeSelection, today: LocalDate): Period {

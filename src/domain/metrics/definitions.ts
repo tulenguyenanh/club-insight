@@ -59,6 +59,7 @@ export const METRIC_DEFINITIONS = {
       "Same rule as Active players, applied one week at a time.",
       "A player who plays in three weeks counts once in each of them, so weeks don't add up to the period total.",
       "Weeks run Monday to Sunday in the club's local time.",
+      "Grey bars are the period before, for comparison.",
       "A week only partly inside the chosen dates counts only those days, and is marked as partial.",
     ],
     higherIsBetter: true,

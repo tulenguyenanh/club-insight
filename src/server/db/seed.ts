@@ -15,7 +15,9 @@ const instant = z.iso.datetime().transform((value) => new Date(value).toISOStrin
 const optionalInstant = z.union([z.literal(""), instant]).transform((value) => value || null);
 const calendarDay = z.iso.date();
 const csvBoolean = z.enum(["true", "false"]).transform((value) => (value === "true" ? 1 : 0));
-const optionalCsvBoolean = z.enum(["true", "false", ""]).transform((value) => (value === "" ? null : value === "true" ? 1 : 0));
+const optionalCsvBoolean = z
+  .enum(["true", "false", ""])
+  .transform((value) => (value === "" ? null : value === "true" ? 1 : 0));
 const timeZone = z.string().refine(isKnownTimeZone, "unknown IANA time zone");
 
 const clubRow = z.object({
@@ -66,31 +68,39 @@ export function seedFromCsv(db: Database, dataDir: string): SeedCounts {
   const sessions = readCsv(join(dataDir, "sessions.csv"), sessionRow);
   const bookings = readCsv(join(dataDir, "bookings.csv"), bookingRow);
 
-  resetSchema(db);
-
-  const insertClub = db.prepare(
-    "INSERT INTO clubs (id, name, time_zone, created_on) VALUES (@club_id, @name, @time_zone, @created_at)",
-  );
-  const insertPlayer = db.prepare(
-    "INSERT INTO players (id, club_id, name, joined_on) VALUES (@player_id, @club_id, @name, @joined_club_at)",
-  );
-  const insertSession = db.prepare(`
-    INSERT INTO sessions (id, club_id, title, starts_at, duration_minutes, places, status, attendance_recorded)
-    VALUES (@session_id, @club_id, @title, @starts_at, @duration_minutes, @places, @status, @attendance_recorded)
-  `);
-  const insertBooking = db.prepare(`
-    INSERT INTO bookings (id, session_id, player_id, booked_at, status, cancelled_at, attended)
-    VALUES (@booking_id, @session_id, @player_id, @booked_at, @status, @cancelled_at, @attended)
-  `);
-
+  // One transaction: a running server reading the file sees the old data or the new, never half of each.
   db.transaction(() => {
-    clubs.forEach((row) => insertClub.run(row));
-    players.forEach((row) => insertPlayer.run(row));
-    sessions.forEach((row) => insertSession.run(row));
-    bookings.forEach((row) => insertBooking.run(row));
+    resetSchema(db);
+    insertAll(
+      db,
+      "INSERT INTO clubs (id, name, time_zone, created_on) VALUES (@club_id, @name, @time_zone, @created_at)",
+      clubs,
+    );
+    insertAll(
+      db,
+      "INSERT INTO players (id, club_id, name, joined_on) VALUES (@player_id, @club_id, @name, @joined_club_at)",
+      players,
+    );
+    insertAll(
+      db,
+      `INSERT INTO sessions (id, club_id, title, starts_at, duration_minutes, places, status, attendance_recorded)
+       VALUES (@session_id, @club_id, @title, @starts_at, @duration_minutes, @places, @status, @attendance_recorded)`,
+      sessions,
+    );
+    insertAll(
+      db,
+      `INSERT INTO bookings (id, session_id, player_id, booked_at, status, cancelled_at, attended)
+       VALUES (@booking_id, @session_id, @player_id, @booked_at, @status, @cancelled_at, @attended)`,
+      bookings,
+    );
   })();
 
   return { clubs: clubs.length, players: players.length, sessions: sessions.length, bookings: bookings.length };
+}
+
+function insertAll(db: Database, sql: string, rows: readonly object[]): void {
+  const statement = db.prepare(sql);
+  for (const row of rows) statement.run(row);
 }
 
 function readCsv<T>(path: string, schema: z.ZodType<T>): T[] {

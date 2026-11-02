@@ -26,6 +26,7 @@ export function toReportContext(scope: ReportScope): ReportContext {
     club: scope.clubDto,
     period: toPeriodDto(scope.period),
     previousPeriod: toPeriodDto(scope.previousPeriod),
+    comparison: scope.comparison,
     asOf: scope.asOf.toISOString(),
   };
 }

@@ -17,8 +17,7 @@ export type { MetricKey, RangePreset };
 
 /** `?range=last-4-weeks`, or `?from=2026-09-01&to=2026-09-30`. Defaults to the last 4 full weeks. */
 export type RangeSelection =
-  | { kind: "preset"; preset: RangePreset }
-  | { kind: "custom"; from: LocalDateString; to: LocalDateString };
+  { kind: "preset"; preset: RangePreset } | { kind: "custom"; from: LocalDateString; to: LocalDateString };
 
 export interface ApiErrorBody {
   error: { code: "invalid_request" | "not_found" | "internal"; message: string };
@@ -63,8 +62,16 @@ export interface ReportContext {
   club: ClubDto;
   period: PeriodDto;
   previousPeriod: PeriodDto;
+  comparison: ComparisonDto;
   asOf: IsoDateTime;
 }
+
+/**
+ * Whether comparing with the previous period is fair. It isn't when that
+ * period starts before the club's first session: part of it would be empty.
+ */
+export type ComparisonDto =
+  { available: true } | { available: false; reason: "no_sessions_yet" | "starts_before_first_session" };
 
 export interface MetricDto<TSnapshot> {
   definition: MetricDefinitionDto;
@@ -105,6 +112,8 @@ export interface SummaryResponse extends ReportContext {
 }
 
 export interface WeekDto {
+  /** Which side of the comparison this week belongs to. */
+  period: "previous" | "current";
   weekStart: LocalDateString;
   /** The days of this week inside the chosen period. */
   from: LocalDateString;
@@ -117,6 +126,7 @@ export interface WeekDto {
 
 export interface WeeklyResponse extends ReportContext {
   definition: MetricDefinitionDto;
+  /** The previous period's weeks, then the chosen period's, in date order. */
   weeks: WeekDto[];
 }
 

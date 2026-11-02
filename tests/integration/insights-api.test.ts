@@ -48,9 +48,16 @@ describe("summary for the last 4 weeks at Saigon Smash", () => {
 
   it("buckets weeks Monday to Sunday in Ho Chi Minh City, not UTC", async () => {
     const { weeks } = await api.insights.weekly("club-001", LAST_4_WEEKS);
+    const current = weeks.filter((w) => w.period === "current");
 
+    expect(weeks.filter((w) => w.period === "previous").map((w) => w.weekStart)).toEqual([
+      "2026-08-10",
+      "2026-08-17",
+      "2026-08-24",
+      "2026-08-31",
+    ]);
     // Bucketing by UTC date would give 38, 37, 41, 42 players and only 4 sessions in the last week.
-    expect(weeks.map((w) => [w.weekStart, w.activePlayers, w.sessionsHeld])).toEqual([
+    expect(current.map((w) => [w.weekStart, w.activePlayers, w.sessionsHeld])).toEqual([
       ["2026-09-07", 37, 5],
       ["2026-09-14", 36, 5],
       ["2026-09-21", 45, 5],
@@ -70,9 +77,35 @@ describe("summary for the last 4 weeks at Saigon Smash", () => {
   });
 });
 
+describe("comparisons", () => {
+  it("are withheld when the period before starts ahead of the club's first session", async () => {
+    const summary = await api.insights.summary("club-001", { kind: "preset", preset: "last-26-weeks" });
+
+    expect(summary.club.firstSessionOn).toBe("2026-01-05");
+    expect(summary.previousPeriod.from).toBe("2025-10-06");
+    expect(summary.comparison).toEqual({ available: false, reason: "starts_before_first_session" });
+    expect(summary.metrics.activePlayers.change).toBeNull();
+    expect(summary.metrics.sessionsHeld.change).toBeNull();
+    expect(summary.metrics.noShows.change).toBeNull();
+  });
+
+  it("are given when both periods lie inside the club's history", async () => {
+    const { comparison, metrics } = await api.insights.summary("club-001", LAST_4_WEEKS);
+
+    expect(comparison).toEqual({ available: true });
+    expect(metrics.activePlayers.change).toEqual({ absolute: 1, relative: 1 / 88 });
+    expect(metrics.sessionsHeld.change).toEqual({ absolute: 0, relative: 0 });
+    expect(metrics.noShows.change?.absolute).toBeCloseTo(15 / 151 - 14 / 152, 10);
+  });
+});
+
 describe("the February cancellations", () => {
   it("counts cancelled sessions separately and never as held", async () => {
-    const { metrics } = await api.insights.summary("club-001", { kind: "custom", from: "2026-02-09", to: "2026-02-22" });
+    const { metrics } = await api.insights.summary("club-001", {
+      kind: "custom",
+      from: "2026-02-09",
+      to: "2026-02-22",
+    });
 
     expect(metrics.sessionsHeld.current).toMatchObject({ value: 4, cancelled: 6 });
     expect(metrics.activePlayers.current.value).toBe(16);
@@ -83,7 +116,12 @@ describe("the new club with no data", () => {
   it("returns zeros with an unknown no-show rate and nothing to compare", async () => {
     const summary = await api.insights.summary("club-002", LAST_4_WEEKS);
 
-    expect(summary.club).toMatchObject({ name: "Thảo Điền Tennis Club", firstSessionOn: null, createdOn: "2026-10-01" });
+    expect(summary.club).toMatchObject({
+      name: "Thảo Điền Tennis Club",
+      firstSessionOn: null,
+      createdOn: "2026-10-01",
+    });
+    expect(summary.comparison).toEqual({ available: false, reason: "no_sessions_yet" });
     expect(summary.metrics.activePlayers.current.value).toBe(0);
     expect(summary.metrics.activePlayers.change).toBeNull();
     expect(summary.metrics.noShows.current.value).toBeNull();

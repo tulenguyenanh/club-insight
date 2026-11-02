@@ -1,9 +1,9 @@
-import type { RangeSelection, SummaryResponse, WeeklyResponse } from "@/contracts/api";
+import type { RangeSelection, SummaryResponse, WeekDto, WeeklyResponse } from "@/contracts/api";
 import { firstPlayedOn, summariseActivePlayers } from "@/domain/metrics/active-players";
 import { countChange, rateChange } from "@/domain/metrics/change";
 import { summariseNoShows } from "@/domain/metrics/no-shows";
 import { summariseSessionsHeld } from "@/domain/metrics/sessions-held";
-import { weeklyActivity } from "@/domain/metrics/weekly";
+import { weeklyActivity, type WeekActivity } from "@/domain/metrics/weekly";
 import { definitionOf, toNoShowsSnapshot, toReportContext, toSessionsSnapshot } from "./mappers";
 import type { ReportScopeLoader } from "./report-scope";
 
@@ -28,8 +28,7 @@ export class InsightsService {
       current: summariseNoShows(scope.current, asOf),
       previous: summariseNoShows(scope.previous, asOf),
     };
-    // Counts only compare fairly with a previous period in which the club actually ran sessions.
-    const previousIsComparable = sessions.previous.held > 0;
+    const comparable = scope.comparison.available;
 
     return {
       ...toReportContext(scope),
@@ -38,19 +37,19 @@ export class InsightsService {
           definition: definitionOf("active-players"),
           current: { value: players.current.count, newPlayers: players.current.newPlayers },
           previous: { value: players.previous.count, newPlayers: players.previous.newPlayers },
-          change: countChange(players.current.count, players.previous.count, previousIsComparable),
+          change: countChange(players.current.count, players.previous.count, comparable),
         },
         sessionsHeld: {
           definition: definitionOf("sessions-held"),
           current: toSessionsSnapshot(sessions.current),
           previous: toSessionsSnapshot(sessions.previous),
-          change: countChange(sessions.current.held, sessions.previous.held, previousIsComparable),
+          change: countChange(sessions.current.held, sessions.previous.held, comparable),
         },
         noShows: {
           definition: definitionOf("no-shows"),
           current: toNoShowsSnapshot(noShows.current),
           previous: toNoShowsSnapshot(noShows.previous),
-          change: rateChange(noShows.current.rate, noShows.previous.rate),
+          change: comparable ? rateChange(noShows.current.rate, noShows.previous.rate) : null,
         },
       },
     };
@@ -58,18 +57,25 @@ export class InsightsService {
 
   async weekly(clubId: string, selection: RangeSelection): Promise<WeeklyResponse> {
     const scope = await this.scopes.load(clubId, selection);
-    const weeks = weeklyActivity(scope.current, scope.period, scope.club.timeZone, scope.asOf);
+    const { asOf, club } = scope;
 
-    return {
-      ...toReportContext(scope),
-      definition: definitionOf("weekly-active-players"),
-      weeks: weeks.map(({ week, ...counts }) => ({
+    const toWeeks = (period: WeekDto["period"], activity: WeekActivity[]): WeekDto[] =>
+      activity.map(({ week, ...counts }) => ({
+        period,
         weekStart: week.weekStart,
         from: week.from,
         to: week.to,
         isPartial: week.isPartial,
         ...counts,
-      })),
+      }));
+
+    return {
+      ...toReportContext(scope),
+      definition: definitionOf("weekly-active-players"),
+      weeks: [
+        ...toWeeks("previous", weeklyActivity(scope.previous, scope.previousPeriod, club.timeZone, asOf)),
+        ...toWeeks("current", weeklyActivity(scope.current, scope.period, club.timeZone, asOf)),
+      ],
     };
   }
 }

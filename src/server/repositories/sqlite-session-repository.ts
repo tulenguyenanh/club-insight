@@ -28,7 +28,7 @@ interface BookingRow {
 /** club id, window start, window end */
 type WindowParams = [string, string, string];
 
-const SESSION_COLUMNS ="id, club_id, title, starts_at, duration_minutes, places, status, attendance_recorded";
+const SESSION_COLUMNS = "id, club_id, title, starts_at, duration_minutes, places, status, attendance_recorded";
 
 const BOOKING_SELECT = `
   SELECT b.id, b.session_id, b.player_id, p.name AS player_name,
