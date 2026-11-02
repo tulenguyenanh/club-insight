@@ -15,7 +15,7 @@ export interface AppConfig {
   fixedNow: Date | null;
 }
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+export function loadConfig(env: Readonly<Record<string, string | undefined>> = process.env): AppConfig {
   const dataDir = join(process.cwd(), "data");
   return {
     dataDir,
