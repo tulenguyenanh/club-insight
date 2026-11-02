@@ -8,10 +8,13 @@ import { useReportParams } from "../hooks/use-report-params";
 import { apiPaths } from "../lib/api-client";
 
 export function AppHeader() {
+  const { clubId, hrefFor } = useReportParams();
+
   return (
     <header className="border-b border-line bg-surface">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
+        {/* Home is the current club's dashboard, with the dates kept. "/" only picks a club. */}
+        <Link href={clubId ? hrefFor() : "/"} className="flex items-center gap-2 font-semibold tracking-tight">
           <span className="grid size-7 place-items-center rounded-md bg-accent text-sm text-white" aria-hidden>
             CI
           </span>
