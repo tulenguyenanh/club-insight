@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { summariseNoShows } from "@/domain/metrics/no-shows";
-import { AS_OF, attended, booking, cancelledBooking, noShow, session } from "../support/builders";
+import { AS_OF, attended, booking, cancelledBooking, noShow, session } from "../../support/builders";
 
 // The no-show rate is the number most likely to be wrong: attendance was only
 // taken at some sessions, and every shortcut (treating blanks as "came",
