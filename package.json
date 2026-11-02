@@ -1,0 +1,48 @@
+{
+  "name": "club-insights",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "seed": "tsx scripts/seed.ts",
+    "predev": "npm run seed",
+    "dev": "next dev",
+    "prebuild": "npm run seed",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@date-fns/tz": "^1.5.0",
+    "better-sqlite3": "^13.0.3",
+    "csv-parse": "^7.0.3",
+    "next": "16.4.3",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "recharts": "^3.10.1",
+    "swr": "^2.5.1",
+    "zod": "^4.3.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "^4",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.3",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^5.0.5"
+  },
+  "allowScripts": {
+    "better-sqlite3": false,
+    "esbuild": false
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
