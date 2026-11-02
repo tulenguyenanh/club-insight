@@ -4,6 +4,7 @@ import { rangeQueryString } from "./range";
 export class ApiError extends Error {
   constructor(
     message: string,
+    /** HTTP status, or 0 when no response arrived. */
     readonly status: number,
   ) {
     super(message);
@@ -11,11 +12,19 @@ export class ApiError extends Error {
 }
 
 export async function fetchJson<T>(path: string): Promise<T> {
-  const response = await fetch(path, { headers: { Accept: "application/json" } });
+  const response = await fetch(path, { headers: { Accept: "application/json" } }).catch(() => {
+    throw new ApiError("We couldn't reach the server. Check your connection and try again.", 0);
+  });
   if (response.ok) return (await response.json()) as T;
 
-  const body = (await response.json().catch(() => null)) as ApiErrorBody | null;
-  throw new ApiError(body?.error.message ?? `The server answered ${response.status}.`, response.status);
+  const body: unknown = await response.json().catch(() => null);
+  throw new ApiError(errorMessageOf(body) ?? `The server answered ${response.status}.`, response.status);
+}
+
+/** The message from our own error shape, or null for anything else (a proxy's error page, say). */
+function errorMessageOf(body: unknown): string | null {
+  const message = (body as Partial<ApiErrorBody> | null)?.error?.message;
+  return typeof message === "string" ? message : null;
 }
 
 const club = (clubId: string) => `/api/clubs/${encodeURIComponent(clubId)}`;
