@@ -17,7 +17,8 @@ npm run dev        # seeds SQLite from data/*.csv, then serves http://localhost:
 
 | Command                             | What it does                                                    |
 | ----------------------------------- | --------------------------------------------------------------- |
-| `npm test`                          | Unit and integration tests (Vitest)                             |
+| `npm test`                          | All 194 tests (Vitest); `npm run test:watch` while working      |
+| `npm run test:coverage`             | The same, with a V8 coverage report                             |
 | `npm run seed`                      | Rebuilds `data/club-insights.db` from the CSVs (safe to re-run) |
 | `npm run build && npm start`        | Production build and server                                     |
 | `npm run lint`, `npm run typecheck` | ESLint, `tsc`                                                   |
@@ -81,7 +82,7 @@ src/
     container.ts        composition root: the only place concrete classes are chosen
   app/                Next.js routing only: thin pages and route handlers
   ui/                 React: views per screen, reusable components, hooks, API client
-tests/                domain unit tests + an integration test against the real CSVs
+tests/                mirrors src/: domain, server, api, ui (see Tests)
 ```
 
 - **Dependencies point inward.** `domain` imports nothing from the app. Services depend on repository
@@ -112,16 +113,44 @@ or `?from=YYYY-MM-DD&to=YYYY-MM-DD`. Errors: `{ "error": { "code", "message" } }
 
 ## Tests
 
-`npm test` runs 25 tests. The number most likely to be wrong is the **no-show rate**: every shortcut
-(blank = attended, blank = no-show, counting cancellations, dividing by all bookings) gives a believable but
-wrong answer. `tests/domain/no-shows.test.ts` pins each of those cases down. The other high-risk area is
-**time zones**: `tests/domain/weeks-and-periods.test.ts` checks that the 05:30 Monday session lands in Monday's week.
+`npm test` runs 194 tests in about 3 seconds. Coverage is 97% of lines and 86% of branches; Next.js page shells
+are excluded because they only wrap a view. Test files mirror `src/`, in two Vitest projects: `*.test.ts` runs in
+Node, and `*.test.tsx` runs in jsdom with Testing Library.
 
-`tests/integration/insights-api.test.ts` seeds the real CSVs into memory and checks the service layer's output
-against figures computed **independently** by a separate script over the raw CSVs: 89 active players, 20
-sessions, 15 no-shows in 151 checked bookings, and weekly figures of 37, 36, 45 and 44. It also checks that the
-drill-down lists add up to the headline numbers, that comparisons are withheld when they wouldn't be fair, and
-that the new club gets "unknown" rather than zero.
+| Layer                                       | What it covers                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/domain`                              | One file per module, on hand-built sessions and bookings: calendar, time zones (including 23- and 25-hour days where clocks change), periods, session and attendance rules, and each metric.                                                                                                    |
+| `tests/server`                              | Seeding (types, unique ids, references between files, a rejected export leaving old data intact), SQLite repositories (window edges, no rows leaking between clubs), period resolution, comparison fairness, HTTP error mapping, config, and drill-downs on a small club you can check by hand. |
+| `tests/server/insights-against-csv.test.ts` | The real CSVs in memory, checked against figures computed **independently** by a separate script: 89 active players, 20 sessions, 15 no-shows in 151 checked bookings, weekly 37, 36, 45 and 44.                                                                                                |
+| `tests/api`                                 | Every route handler called the way Next.js calls it: status codes, JSON shape, 400 and 404 bodies, and the `/` redirect.                                                                                                                                                                        |
+| `tests/ui`                                  | Formatting in the club's time zone, the API client, the range picker and metric card, and **whole screens** rendered against the real API. Their `fetch` is answered in-process by the route handlers over SQLite, so the UI and the API can't drift apart.                                     |
+
+The number most likely to be wrong is the **no-show rate**: every shortcut (blank = attended, blank = no-show,
+counting cancellations, dividing by all bookings) gives a believable but wrong answer, and
+`tests/domain/metrics/no-shows.test.ts` pins down each one. The other high-risk area is **time zones**: the 05:30
+Monday session is still Sunday in UTC.
+
+### How the tests were written
+
+Changes to behaviour go **red, then green, then refactor**:
+
+1. Write a test that states the rule and watch it fail for the expected reason.
+2. Make the smallest change that passes it.
+3. Tidy up with the whole suite green.
+
+Each fix is committed together with its test, and the commit message records the red and the green. The
+fixes found this way:
+
+- `?from=2026-13-01` crashed the API with a 500 and broke the page. It is now a 400.
+- A broken reference in the CSVs gave SQLite's bare `FOREIGN KEY constraint failed`. The seed now names the file,
+  line and value.
+- A no-show rate up 0.04 points showed as a red "+0.0 pts". It now reads "No change".
+- The API client threw a `TypeError` on an unexpected error body. Network loss now gives a readable message.
+
+Tests that describe behaviour already in place were checked a different way: breaking each business rule on
+purpose must make them fail. Eight rules were broken this way, one at a time, including counting no-shows as
+active, using UTC days, and letting unchecked bookings into the rate. Each broke between 1 and 21 tests, and no
+broken rule went unnoticed.
 
 ## What I'd do next
 
