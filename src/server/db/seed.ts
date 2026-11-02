@@ -6,9 +6,9 @@ import type { Database } from "./connection";
 import { resetSchema } from "./schema";
 
 /**
- * Loads the four CSV exports into a fresh schema. Every row is validated first,
- * so a malformed export fails loudly with its file and line instead of
- * quietly producing wrong numbers.
+ * Loads the four CSV exports into a fresh schema. Every row is validated first
+ * (types, unique ids, references between files), so a bad export fails loudly
+ * with its file and line instead of quietly producing wrong numbers.
  */
 
 const instant = z.iso.datetime().transform((value) => new Date(value).toISOString());
@@ -62,11 +62,38 @@ export interface SeedCounts {
   bookings: number;
 }
 
+/** The text of the four CSV exports. */
+export interface CsvExports {
+  clubs: string;
+  players: string;
+  sessions: string;
+  bookings: string;
+}
+
+export function readCsvExports(dataDir: string): CsvExports {
+  const read = (name: keyof CsvExports) => readFileSync(join(dataDir, `${name}.csv`), "utf8");
+  return { clubs: read("clubs"), players: read("players"), sessions: read("sessions"), bookings: read("bookings") };
+}
+
 export function seedFromCsv(db: Database, dataDir: string): SeedCounts {
-  const clubs = readCsv(join(dataDir, "clubs.csv"), clubRow);
-  const players = readCsv(join(dataDir, "players.csv"), playerRow);
-  const sessions = readCsv(join(dataDir, "sessions.csv"), sessionRow);
-  const bookings = readCsv(join(dataDir, "bookings.csv"), bookingRow);
+  return seedDatabase(db, readCsvExports(dataDir));
+}
+
+export function seedDatabase(db: Database, exports: CsvExports): SeedCounts {
+  const clubs = parseCsv("clubs.csv", exports.clubs, clubRow);
+  const players = parseCsv("players.csv", exports.players, playerRow);
+  const sessions = parseCsv("sessions.csv", exports.sessions, sessionRow);
+  const bookings = parseCsv("bookings.csv", exports.bookings, bookingRow);
+
+  // Checked here, before anything is written, so the error can name the line (SQLite's can't).
+  const clubIds = uniqueIds("clubs.csv", clubs, "club_id");
+  const playerIds = uniqueIds("players.csv", players, "player_id");
+  const sessionIds = uniqueIds("sessions.csv", sessions, "session_id");
+  uniqueIds("bookings.csv", bookings, "booking_id");
+  requireKnown("players.csv", players, "club_id", clubIds, "clubs.csv");
+  requireKnown("sessions.csv", sessions, "club_id", clubIds, "clubs.csv");
+  requireKnown("bookings.csv", bookings, "session_id", sessionIds, "sessions.csv");
+  requireKnown("bookings.csv", bookings, "player_id", playerIds, "players.csv");
 
   // One transaction: a running server reading the file sees the old data or the new, never half of each.
   db.transaction(() => {
@@ -103,8 +130,8 @@ function insertAll(db: Database, sql: string, rows: readonly object[]): void {
   for (const row of rows) statement.run(row);
 }
 
-function readCsv<T>(path: string, schema: z.ZodType<T>): T[] {
-  const records: Record<string, string>[] = parse(readFileSync(path, "utf8"), {
+function parseCsv<T>(file: string, text: string, schema: z.ZodType<T>): T[] {
+  const records: Record<string, string>[] = parse(text, {
     columns: true,
     bom: true,
     skip_empty_lines: true,
@@ -112,12 +139,37 @@ function readCsv<T>(path: string, schema: z.ZodType<T>): T[] {
   });
   return records.map((record, index) => {
     const result = schema.safeParse(record);
-    if (!result.success) {
-      // +2: one for the header row, one because lines are counted from 1.
-      throw new Error(`${path}, line ${index + 2}:\n${z.prettifyError(result.error)}`);
-    }
+    if (!result.success) throw new Error(`${file}, line ${lineOf(index)}:\n${z.prettifyError(result.error)}`);
     return result.data;
   });
+}
+
+function uniqueIds<K extends string>(file: string, rows: readonly Record<K, string>[], key: K): Set<string> {
+  const ids = new Set<string>();
+  rows.forEach((row, index) => {
+    if (ids.has(row[key])) throw new Error(`${file}, line ${lineOf(index)}: ${key} "${row[key]}" appears twice.`);
+    ids.add(row[key]);
+  });
+  return ids;
+}
+
+function requireKnown<K extends string>(
+  file: string,
+  rows: readonly Record<K, string>[],
+  key: K,
+  known: ReadonlySet<string>,
+  knownFile: string,
+): void {
+  rows.forEach((row, index) => {
+    if (!known.has(row[key])) {
+      throw new Error(`${file}, line ${lineOf(index)}: ${key} "${row[key]}" is not in ${knownFile}.`);
+    }
+  });
+}
+
+/** +2: one for the header row, one because lines are counted from 1. */
+function lineOf(rowIndex: number): number {
+  return rowIndex + 2;
 }
 
 function isKnownTimeZone(value: string): boolean {
