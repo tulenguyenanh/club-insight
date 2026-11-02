@@ -84,11 +84,20 @@ export function plural(count: number, singular: string, pluralForm = `${singular
 
 export type ChangeKind = "count" | "rate";
 
+/** Rate changes are shown in percentage points to this many decimals. */
+const POINT_DECIMALS = 1;
+
+/** True when the change would display as zero, so it mustn't be called better or worse. */
+export function isUnchanged(change: ChangeDto, kind: ChangeKind): boolean {
+  if (kind === "rate") return Number((change.absolute * 100).toFixed(POINT_DECIMALS)) === 0;
+  return change.absolute === 0;
+}
+
 /** "+3 (+12%)" for counts, "+1.4 pts" for rates. */
 export function formatChange(change: ChangeDto, kind: ChangeKind): string {
   if (kind === "rate") {
     const points = change.absolute * 100;
-    return `${signed(points, (n) => n.toFixed(1))} pts`;
+    return `${signed(points, (n) => n.toFixed(POINT_DECIMALS))} pts`;
   }
   const absolute = signed(change.absolute, formatCount);
   return change.relative === null ? absolute : `${absolute} (${signed(change.relative * 100, (n) => n.toFixed(0))}%)`;
