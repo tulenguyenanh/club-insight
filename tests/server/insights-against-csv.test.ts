@@ -1,23 +1,18 @@
-import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { fixedClock } from "@/server/clock";
 import { createServices, type Services } from "@/server/container";
-import { openInMemoryDatabase } from "@/server/db/connection";
-import { seedFromCsv } from "@/server/db/seed";
 import { InvalidRequestError, NotFoundError } from "@/server/errors";
+import { BRIEF_NOW, seededDatabase } from "../support/seeded-database";
 
 // Seeds the real CSV exports and checks the API's numbers against figures
 // computed independently (a separate Python script over the raw CSVs), with
 // "now" pinned to Monday 5 October 2026, 09:00 in Ho Chi Minh City.
-const NOW = new Date("2026-10-05T09:00:00+07:00");
 const LAST_4_WEEKS = { kind: "preset", preset: "last-4-weeks" } as const;
 
 let api: Services;
 
 beforeAll(() => {
-  const db = openInMemoryDatabase();
-  seedFromCsv(db, join(process.cwd(), "data"));
-  api = createServices(db, fixedClock(NOW));
+  api = createServices(seededDatabase(), fixedClock(BRIEF_NOW));
 });
 
 describe("summary for the last 4 weeks at Saigon Smash", () => {

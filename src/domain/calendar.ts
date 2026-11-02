@@ -11,7 +11,9 @@ const MS_PER_DAY = 86_400_000;
 
 export function isLocalDate(value: string): value is LocalDate {
   if (!LOCAL_DATE_PATTERN.test(value)) return false;
-  return toUtcMidnight(value).toISOString().slice(0, 10) === value;
+  const date = toUtcMidnight(value);
+  // Month 13 is an invalid Date; 30 February rolls over to March and fails the round trip.
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 export function addDays(date: LocalDate, days: number): LocalDate {
